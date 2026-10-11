@@ -1,0 +1,112 @@
+{
+  "meta": {
+    "source": "http://webserver.siiaa.siu.buap.mx/serv_social/SS_ALUM_AUTSV_OFERTA_C",
+    "scrapedAt": "2026-10-10T00:00:00Z",
+    "schemaVersion": 1
+  },
+  "sections": [
+    {
+      "id": "ingenierias",
+      "name": "Ingenierías",
+      "order": 1
+    },
+    {
+      "id": "licenciaturas",
+      "name": "Licenciaturas",
+      "order": 2
+    },
+    {
+      "id": "salud",
+      "name": "Área de la salud",
+      "order": 3
+    },
+    {
+      "id": "economia",
+      "name": "Economía y administración",
+      "order": 4
+    }
+  ],
+  "faculties": [
+    {
+      "id": "fcc",
+      "name": "Facultad de Ciencias de la Computación"
+    }
+  ],
+  "areas": [
+    {
+      "uuid": "area-ing-cc",
+      "slug": "ingenieria-en-ciencias-de-la-computacion",
+      "name": "Ciencias de la Computación",
+      "rawName": "Ing. en Ciencias de la Computación",
+      "level": "Ing",
+      "sectionId": "ingenierias",
+      "facultyId": "fcc",
+      "offerIds": [
+        "offer-cc-shared"
+      ]
+    }
+  ],
+  "offers": [
+    {
+      "uuid": "offer-cc-shared",
+      "listing": {
+        "folio": "PP-24018",
+        "programa": "Desarrollo de sistemas internos",
+        "tipo": "practica_profesional",
+        "area": "Lic. / Ing.",
+        "perfilEducativo": "Ciencias de la Computación",
+        "coordinador": "Mtra. Laura Méndez",
+        "cursoInduccion": "Sí",
+        "empresa": "Laboratorio de Cómputo FCC"
+      },
+      "summary": {
+        "tipo": "practica_profesional",
+        "programNumber": "24018",
+        "registeredAt": "2026-01-31",
+        "registeredAtRaw": "31/01/26",
+        "company": "Laboratorio de Cómputo FCC",
+        "sector": "Educación",
+        "period": "1, 2027",
+        "revalidated": true,
+        "status": "Aceptado"
+      },
+      "general": {
+        "name": "Desarrollo de sistemas internos",
+        "programType": "Práctica profesional",
+        "department": "Desarrollo de software",
+        "startDate": "2027-01-12",
+        "startDateRaw": "12/01/27",
+        "endDate": "2027-07-10",
+        "endDateRaw": "10/07/27",
+        "durationMonths": 6
+      },
+      "supervisor": {
+        "name": "Ing. Ricardo Solís",
+        "position": "Jefe de desarrollo",
+        "email": "ricardo.solis@example.edu",
+        "phone": "2220000000",
+        "interviewAddress": "via correo",
+        "workAddress": "Ciudad Universitaria, edificio FCC"
+      },
+      "appointment": {
+        "addressee": "Dra. Elena Rivas",
+        "position": "Directora"
+      },
+      "programInfo": {
+        "monthlyStipend": "Sin apoyo económico",
+        "otherSupport": "Equipo de cómputo",
+        "socialAxes": [
+          "Educación de calidad"
+        ],
+        "promotesEntrepreneurship": false
+      },
+      "areaDetails": [
+        {
+          "areaUuid": "area-ing-cc",
+          "activities": "Diseñar componentes y revisar su integración.",
+          "competencies": "Diseño de software, pruebas y colaboración."
+        }
+      ]
+    }
+  ]
+}
