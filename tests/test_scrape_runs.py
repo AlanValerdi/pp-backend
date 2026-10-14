@@ -61,6 +61,41 @@ async def test_success_commits_catalog_and_run_together(execution):
     session.commit.assert_awaited_once()
 
 
+async def test_commit_log_follows_successful_commit(execution, caplog):
+    session, _, _, _ = execution
+
+    async def commit():
+        assert "event=catalog_committed" not in caplog.text
+
+    session.commit.side_effect = commit
+    with caplog.at_level("INFO"):
+        await jobs.execute_run(7)
+    assert "trace_id=run-7 event=catalog_committed" in caplog.text
+    assert "event=run_succeeded" in caplog.text
+
+
+@pytest.mark.parametrize("failure", [RuntimeError("failed"), asyncio.CancelledError()])
+async def test_failed_collection_never_logs_commit(execution, caplog, failure):
+    _, collect, _, _ = execution
+    collect.side_effect = failure
+    with caplog.at_level("INFO"), pytest.raises(type(failure)):
+        await jobs.execute_run(7)
+    assert "event=catalog_committed" not in caplog.text
+    assert "event=failure_recorded" in caplog.text
+    outcome = "run_cancelled" if isinstance(failure, asyncio.CancelledError) else "run_failed"
+    assert f"trace_id=run-7 event={outcome}" in caplog.text
+
+
+async def test_failed_commit_never_logs_success(execution, caplog):
+    session, _, _, _ = execution
+    session.commit.side_effect = [RuntimeError("commit failed"), None]
+    with caplog.at_level("INFO"), pytest.raises(RuntimeError):
+        await jobs.execute_run(7)
+    assert "event=catalog_committed" not in caplog.text
+    assert "event=run_succeeded" not in caplog.text
+    assert "stage='persistence'" in caplog.text
+
+
 async def test_collection_failure_is_recorded(execution):
     _, collect, save, finish = execution
     collect.side_effect = ValueError("invalid careers page")

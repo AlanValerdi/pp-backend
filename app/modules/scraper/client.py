@@ -1,10 +1,12 @@
 import asyncio
 import logging
+from time import monotonic
 
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from app.core.config import CAREERS_PATH, Settings, get_settings
+from app.modules.scraper.tracing import event
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,22 @@ class SiiaaClient:
     ) -> httpx.Response:
         if self._http is None:
             raise RuntimeError("SiiaaClient must be used as an async context manager")
-        response = await self._http.request(method, path, data=data)
+        started = monotonic()
+        event(logger, "fetch_started", logging.DEBUG, method=method, path=path)
+        try:
+            response = await self._http.request(method, path, data=data)
+        except httpx.HTTPError as exc:
+            event(logger, "fetch_failed", logging.WARNING, path=path, error_type=type(exc).__name__)
+            raise
+        event(
+            logger,
+            "fetch_completed",
+            logging.DEBUG if response.is_success else logging.WARNING,
+            method=method,
+            path=path,
+            http_status=response.status_code,
+            bytes=len(response.content),
+            duration_seconds=round(monotonic() - started, 3),
+        )
         response.raise_for_status()
         return response
