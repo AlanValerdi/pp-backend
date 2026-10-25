@@ -96,6 +96,33 @@ type Catalog = components["schemas"]["Catalog"];
 
 Regenera el archivo cuando cambie el contrato de la API.
 
+## Exportar e importar una instancia
+
+El export incluye el esquema completo, catálogo, relaciones, historial de scraping,
+secuencias y versión de Alembic. Requiere `pg_dump` de la misma versión mayor
+que el servidor PostgreSQL o una posterior. Lee `DATABASE_URL` de `.env`.
+
+```bash
+uv run python -m scripts.export_database data/pp-backup.dump
+pg_restore --list data/pp-backup.dump
+```
+
+El archivo contiene datos de contacto: transfiérelo por un medio privado.
+Para restaurarlo, crea una base **vacía** en la otra instancia y ejecuta
+(ajusta host, usuario y base; PostgreSQL solicitará la contraseña):
+
+```bash
+pg_restore --host localhost --username pp --dbname pp_new \
+  --no-owner --no-privileges --single-transaction --exit-on-error data/pp-backup.dump
+```
+
+Usa una versión de PostgreSQL igual o posterior a la de origen y herramientas
+cliente compatibles con el archivo. La restauración carga todos los registros
+con sus identificadores originales; no combina datos con una base existente.
+Después configura `DATABASE_URL` en la instancia destino y ejecuta
+`uv run alembic upgrade head` antes de iniciar la API. Evita ejecutar el scraper
+en el destino durante la restauración.
+
 ## Tests
 
 ```bash

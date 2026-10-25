@@ -1,0 +1,47 @@
+;
+; Archive created at 2026-10-25 03:10:09 UTC
+;     dbname: pp
+;     TOC Entries: 36
+;     Compression: gzip
+;     Dump Version: 1.16-0
+;     Format: CUSTOM
+;     Integer: 4 bytes
+;     Offset: 8 bytes
+;     Dumped from database version: 17.11 (Debian 17.11-1.pgdg13+2)
+;     Dumped by pg_dump version: 17.11 (Debian 17.11-1.pgdg13+2)
+;
+;
+; Selected TOC Entries:
+;
+217; 1259 16385 TABLE public alembic_version pp
+222; 1259 16413 TABLE public areas pp
+218; 1259 16390 TABLE public faculties pp
+224; 1259 16446 TABLE public offer_areas pp
+223; 1259 16432 TABLE public offers pp
+220; 1259 16398 TABLE public scrape_runs pp
+219; 1259 16397 SEQUENCE public scrape_runs_id_seq pp
+3481; 0 0 SEQUENCE OWNED BY public scrape_runs_id_seq pp
+221; 1259 16406 TABLE public sections pp
+3298; 2604 16401 DEFAULT public scrape_runs id pp
+3467; 0 16385 TABLE DATA public alembic_version pp
+3472; 0 16413 TABLE DATA public areas pp
+3468; 0 16390 TABLE DATA public faculties pp
+3474; 0 16446 TABLE DATA public offer_areas pp
+3473; 0 16432 TABLE DATA public offers pp
+3470; 0 16398 TABLE DATA public scrape_runs pp
+3471; 0 16406 TABLE DATA public sections pp
+3482; 0 0 SEQUENCE SET public scrape_runs_id_seq pp
+3300; 2606 16389 CONSTRAINT public alembic_version alembic_version_pkc pp
+3308; 2606 16419 CONSTRAINT public areas pk_areas pp
+3302; 2606 16396 CONSTRAINT public faculties pk_faculties pp
+3316; 2606 16452 CONSTRAINT public offer_areas pk_offer_areas pp
+3312; 2606 16438 CONSTRAINT public offers pk_offers pp
+3304; 2606 16405 CONSTRAINT public scrape_runs pk_scrape_runs pp
+3306; 2606 16412 CONSTRAINT public sections pk_sections pp
+3310; 2606 16421 CONSTRAINT public areas uq_areas_slug pp
+3314; 2606 16440 CONSTRAINT public offers uq_offers_folio pp
+3317; 2606 16422 FK CONSTRAINT public areas fk_areas_faculty_id_faculties pp
+3318; 2606 16427 FK CONSTRAINT public areas fk_areas_section_id_sections pp
+3320; 2606 16453 FK CONSTRAINT public offer_areas fk_offer_areas_area_uuid_areas pp
+3321; 2606 16458 FK CONSTRAINT public offer_areas fk_offer_areas_offer_uuid_offers pp
+3319; 2606 16441 FK CONSTRAINT public offers fk_offers_last_seen_run_id_scrape_runs pp
