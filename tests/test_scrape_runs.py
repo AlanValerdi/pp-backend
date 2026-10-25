@@ -133,7 +133,7 @@ def test_cli_run_subcommand(monkeypatch):
     monkeypatch.setattr(cli, "_run", run)
     result = CliRunner().invoke(cli.app, ["run", "--dry-run", "--limit-careers", "1"])
     assert result.exit_code == 0, result.output
-    run.assert_awaited_once_with(dry_run=True, out=None, limit_careers=1)
+    run.assert_awaited_once_with(dry_run=True, out=None, limit_careers=1, limit_offers=None)
 
 
 async def test_dry_run_exports_partial_without_database(monkeypatch, execution, catalog, tmp_path):
@@ -198,3 +198,82 @@ async def test_shutdown_immediately_after_start(monkeypatch, execution):
     await manager.close()
     assert finish.await_args.args[2] == "failed"
     assert not manager._tasks
+
+
+@pytest.mark.parametrize("limit", ["0", "-1"])
+def test_cli_rejects_invalid_offer_limit(limit, monkeypatch):
+    run = AsyncMock()
+    monkeypatch.setattr(cli, "_run", run)
+    result = CliRunner().invoke(cli.app, ["run", "--limit-offers", limit])
+    assert result.exit_code == 2
+    run.assert_not_awaited()
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_cli_accepts_offer_limit(monkeypatch, dry_run):
+    run = AsyncMock()
+    monkeypatch.setattr(cli, "_run", run)
+    args = ["run", "--limit-offers", "100"] + (["--dry-run"] if dry_run else [])
+    result = CliRunner().invoke(cli.app, args)
+    assert result.exit_code == 0, result.output
+    run.assert_awaited_once_with(dry_run=dry_run, out=None, limit_careers=None, limit_offers=100)
+
+
+async def test_limited_execution_preserves_missing_records(execution):
+    _, collect, save, finish = execution
+    await jobs.execute_run(7, limit_offers=100)
+    collect.assert_awaited_once_with(limit_offers=100)
+    assert save.await_args.kwargs == {"deactivate_missing": False}
+    assert finish.await_args.args[3]["limitOffers"] == 100
+
+
+@pytest.mark.parametrize("limit", [1, 2, 100])
+async def test_offer_limit_selects_unique_offers_and_keeps_associations(monkeypatch, limit):
+    from dataclasses import replace
+
+    from app.modules.scraper import service
+    from app.modules.scraper.parsers import parse_listing
+    from app.modules.scraper.parsers.careers import CareerLink
+
+    row = parse_listing((FIXTURES / "listing.html").read_text())[0]
+    first = replace(row, folio="999", v_01="first", perfil_educativo="Lic")
+    second = replace(row, folio="111", v_01="second", perfil_educativo="Lic")
+    third = replace(row, folio="222", v_01="third", perfil_educativo="Lic")
+    careers = [CareerLink("Lic. Derecho", "1", "1"), CareerLink("Lic. Economía", "2", "1"),
+               CareerLink("Lic. Contaduría", "3", "1")]
+    monkeypatch.setattr(service, "parse_careers", lambda _: careers)
+    monkeypatch.setattr(service, "parse_listing", lambda html: {
+        "1": [first, first, second], "2": [first], "3": [third]
+    }[html])
+    requests = []
+
+    class Client:
+        async def get_careers_html(self):
+            return "careers"
+
+        async def post_text(self, path, data):
+            if path == "Ss_OFERTA_prog":
+                return data["un"]
+            requests.append(data["v_01"])
+            return (FIXTURES / "detail.html").read_text()
+
+    catalog, stats = await ScraperService(Client()).collect(limit_offers=limit)
+    expected = {"999", "111", "222"} if limit == 100 else {"999", "111"} if limit == 2 else {"999"}
+    assert {offer.listing.folio for offer in catalog.offers} == expected
+    assert stats["limitOffers"] == limit
+    assert len(catalog.areas) == (3 if limit == 100 else 2)
+    assert requests.count("first") == 2
+    assert requests.count("second") == (0 if limit == 1 else 1)
+    assert requests.count("third") == (1 if limit == 100 else 0)
+    selected = {offer.uuid for offer in catalog.offers}
+    assert all(area.offer_ids and set(area.offer_ids) <= selected for area in catalog.areas)
+    first_offer = next(offer for offer in catalog.offers if offer.listing.folio == "999")
+    assert len(first_offer.area_details) == 2
+    referenced = {area.faculty_id for area in catalog.areas}
+    assert {faculty.id for faculty in catalog.faculties} == referenced
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+async def test_service_rejects_invalid_offer_limit(limit):
+    with pytest.raises(ValueError, match="limit_offers must be positive"):
+        await ScraperService(AsyncMock()).collect(limit_offers=limit)

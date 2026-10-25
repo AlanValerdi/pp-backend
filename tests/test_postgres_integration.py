@@ -179,3 +179,25 @@ async def test_database_backed_routes_and_admin_run(database, catalog, monkeypat
     finally:
         await app.state.scrape_jobs.close()
         get_settings.cache_clear()
+
+
+async def test_limited_runs_preserve_existing_records_and_are_idempotent(database, catalog):
+    await seed(database, catalog)
+    sample = catalog.model_copy(deep=True)
+    sample.offers[0].uuid = "limited-offer"
+    sample.offers[0].listing.folio = "limited-folio"
+    sample.areas[0].uuid = "limited-area"
+    sample.areas[0].slug = "limited-area"
+    sample.areas[0].offer_ids = ["limited-offer"]
+    sample.offers[0].area_details[0].area_uuid = "limited-area"
+    for _ in range(2):
+        async with database() as session:
+            run = await create_run(session)
+            await save_catalog(session, sample, run.id, deactivate_missing=False)
+            await finish_run(session, run.id, "succeeded", {"limitOffers": 1}, None)
+            await session.commit()
+    async with database() as session:
+        loaded = await load_catalog(session)
+        assert {offer.uuid for offer in loaded.offers} == {catalog.offers[0].uuid, "limited-offer"}
+        assert {area.uuid for area in loaded.areas} == {catalog.areas[0].uuid, "limited-area"}
+        assert len((await session.exec(select(OfferAreaRow))).all()) == 2

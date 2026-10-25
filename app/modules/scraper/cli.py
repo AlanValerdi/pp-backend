@@ -21,6 +21,9 @@ def cli() -> None:
 
 @app.command()
 def run(
+    limit_offers: int | None = typer.Option(
+        None, "--limit-offers", min=1, help="Consulta detalles de hasta N ofertas únicas."
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="No escribe en la base de datos."),
     out: Path | None = typer.Option(None, "--out", help="Ruta del JSON cuando se usa --dry-run."),
     limit_careers: int | None = typer.Option(
@@ -34,17 +37,21 @@ def run(
         raise typer.BadParameter("--out requires --dry-run")
     configure_logging()
     try:
-        asyncio.run(_run(dry_run=dry_run, out=out, limit_careers=limit_careers))
+        asyncio.run(_run(dry_run=dry_run, out=out, limit_careers=limit_careers, limit_offers=limit_offers))
     except IncompleteScrape as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
 
 
-async def _run(dry_run: bool, out: Path | None, limit_careers: int | None) -> None:
+async def _run(
+    dry_run: bool, out: Path | None, limit_careers: int | None, limit_offers: int | None = None
+) -> None:
     try:
         if dry_run:
             async with SiiaaClient() as client:
-                catalog, stats = await ScraperService(client).collect(limit_careers=limit_careers)
+                catalog, stats = await ScraperService(client).collect(
+                    limit_careers=limit_careers, limit_offers=limit_offers
+                )
             destination = out or Path("data/siiaa-offers.json")
             destination.parent.mkdir(parents=True, exist_ok=True)
             payload = catalog.model_dump(by_alias=True, mode="json")
@@ -55,7 +62,10 @@ async def _run(dry_run: bool, out: Path | None, limit_careers: int | None) -> No
         async with SessionLocal() as session:
             scrape_run = await create_run(session)
             run_id = scrape_run.id or 0
-        stats = await execute_run(run_id)
+        if limit_offers is None:
+            stats = await execute_run(run_id)
+        else:
+            stats = await execute_run(run_id, limit_offers=limit_offers)
         typer.echo(f"Catálogo guardado en el run {run_id} ({stats})")
     finally:
         await engine.dispose()

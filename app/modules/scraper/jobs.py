@@ -17,15 +17,23 @@ class ScrapeAlreadyRunning(Exception):
     pass
 
 
-async def execute_run(run_id: int) -> dict:
-    """Publish a complete snapshot atomically, recording failures in a fresh transaction."""
-    stats: dict = {}
+async def execute_run(run_id: int, *, limit_offers: int | None = None) -> dict:
+    """Publish atomically; limited runs preserve records outside their sample."""
+    stats: dict = {"limitOffers": limit_offers} if limit_offers is not None else {}
     try:
         async with SiiaaClient() as client:
-            catalog, stats = await ScraperService(client).collect()
+            service = ScraperService(client)
+            if limit_offers is None:
+                catalog, stats = await service.collect()
+            else:
+                catalog, collected_stats = await service.collect(limit_offers=limit_offers)
+                stats.update(collected_stats)
         require_complete(stats)
         async with SessionLocal() as session:
-            await save_catalog(session, catalog, run_id)
+            if limit_offers is None:
+                await save_catalog(session, catalog, run_id)
+            else:
+                await save_catalog(session, catalog, run_id, deactivate_missing=False)
             await finish_run(session, run_id, "succeeded", stats, None)
             await session.commit()
     except (Exception, asyncio.CancelledError) as exc:

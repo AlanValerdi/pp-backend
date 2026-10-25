@@ -56,7 +56,9 @@ async def finish_run(
     run.error = error
 
 
-async def save_catalog(session: AsyncSession, catalog: Catalog, run_id: int) -> None:
+async def save_catalog(
+    session: AsyncSession, catalog: Catalog, run_id: int, *, deactivate_missing: bool = True
+) -> None:
     for section in catalog.sections:
         await _merge_section(session, section)
     for faculty in catalog.faculties:
@@ -72,6 +74,8 @@ async def save_catalog(session: AsyncSession, catalog: Catalog, run_id: int) -> 
         await session.flush()
         await _replace_links(session, offer)
     await session.flush()
+    if not deactivate_missing:
+        return
     area_update = update(AreaRow).values(is_active=False)
     offer_update = update(OfferRow).values(is_active=False)
     if seen_areas:

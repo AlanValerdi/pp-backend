@@ -26,9 +26,13 @@ La API queda en http://localhost:8000 y la documentación en http://localhost:80
 ```bash
 uv run python -m app.modules.scraper.cli run --dry-run --out data/siiaa-offers.json
 uv run python -m app.modules.scraper.cli run
+# Carga inicial de hasta 100 ofertas únicas:
+uv run python -m app.modules.scraper.cli run --limit-offers 100
 ```
 
 `--limit-careers N` consulta solo las primeras N carreras y requiere `--dry-run`; `N` debe ser positivo. `--out` también requiere `--dry-run`. Sin límite recorre todos los programas educativos.
+
+`--limit-offers N` acepta un entero positivo y funciona con persistencia o `--dry-run`. Lee los listados, selecciona las primeras N ofertas únicas en orden de origen y descarga solo sus detalles, conservando sus asociaciones con carreras. Si hay menos de N, guarda las disponibles. Los runs limitados actualizan la muestra sin desactivar ofertas ni áreas existentes fuera de ella; una base con datos previos puede tener más de N ofertas. El límite solicitado se registra como `limitOffers` en las estadísticas. El endpoint HTTP sigue ejecutando el catálogo completo.
 
 Si falla un listado o un detalle después de los reintentos, el run queda `failed` y conserva el catálogo anterior. Un dry run puede exportar un JSON parcial para diagnóstico: imprime estadísticas y termina con código 1 si hubo errores.
 
@@ -39,6 +43,23 @@ La API usa un solo worker y una sola instancia: el lock del scraper vive en memo
 Compose lee `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` y `COMPOSE_DATABASE_URL` de `.env`; si falta alguna variable o está vacía, falla con un mensaje indicando cuál configurar. `COMPOSE_DATABASE_URL` usa `db` como host y se entrega a la API como `DATABASE_URL`. Fuera de Docker se usa `DATABASE_URL` con `localhost`.
 
 Configura las mismas credenciales y base en ambas URLs; codifica los caracteres especiales del usuario o contraseña para usarlos en una URL. Cambiar `.env` no modifica usuarios ni contraseñas en un volumen PostgreSQL ya inicializado.
+
+## Tipos TypeScript para el frontend
+
+Los modelos Pydantic definen el contrato y FastAPI lo publica en `http://localhost:8000/openapi.json`. No es necesario ejecutar el scraper para generar tipos. Con la API en marcha, ejecuta en el frontend:
+
+```bash
+npx openapi-typescript http://localhost:8000/openapi.json -o lib/api-types.d.ts
+```
+
+```ts
+import type { components } from "./api-types";
+
+type Offer = components["schemas"]["Offer"];
+type Catalog = components["schemas"]["Catalog"];
+```
+
+Regenera el archivo cuando cambie el contrato de la API.
 
 ## Tests
 

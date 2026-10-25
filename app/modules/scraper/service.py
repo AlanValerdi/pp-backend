@@ -84,7 +84,11 @@ class ScraperService:
     def __init__(self, client: SiiaaClient) -> None:
         self.client = client
 
-    async def collect(self, limit_careers: int | None = None) -> tuple[Catalog, dict]:
+    async def collect(
+        self, limit_careers: int | None = None, limit_offers: int | None = None
+    ) -> tuple[Catalog, dict]:
+        if limit_offers is not None and limit_offers < 1:
+            raise ValueError("limit_offers must be positive")
         if limit_careers is not None and limit_careers < 1:
             raise ValueError("limit_careers must be positive")
         careers = parse_careers(await self.client.get_careers_html())
@@ -110,6 +114,14 @@ class ScraperService:
                 stats["listingErrors"] += 1
             stats["rows"] += len(rows)
             self._absorb_career(career_name, rows, areas, offers)
+
+        if limit_offers is not None:
+            stats["limitOffers"] = limit_offers
+            offers = dict(list(offers.items())[:limit_offers])
+            selected_ids = {offer.uuid for offer in offers.values()}
+            for area in areas.values():
+                area.offer_ids.intersection_update(selected_ids)
+            areas = {key: area for key, area in areas.items() if area.offer_ids}
 
         jobs: list[tuple[OfferDraft, str, str, str, str]] = []
         for offer in offers.values():
