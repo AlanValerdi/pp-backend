@@ -1,6 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
+from uuid import uuid4
 
 import typer
 
@@ -10,6 +11,7 @@ from app.modules.catalog.repository import create_run
 from app.modules.scraper.client import SiiaaClient
 from app.modules.scraper.jobs import execute_run
 from app.modules.scraper.service import IncompleteScrape, ScraperService, require_complete
+from app.modules.scraper.tracing import trace_scope
 
 app = typer.Typer(help="Scraper del catálogo SIIAA.")
 
@@ -48,17 +50,8 @@ async def _run(
 ) -> None:
     try:
         if dry_run:
-            async with SiiaaClient() as client:
-                catalog, stats = await ScraperService(client).collect(
-                    limit_careers=limit_careers, limit_offers=limit_offers
-                )
-            destination = out or Path("data/siiaa-offers.json")
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            payload = catalog.model_dump(by_alias=True, mode="json")
-            destination.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            typer.echo(f"JSON escrito en {destination} ({stats})")
-            require_complete(stats)
-            return
+            with trace_scope(f"dry-run-{uuid4().hex}"):
+                return await _dry_run(out, limit_careers, limit_offers)
         async with SessionLocal() as session:
             scrape_run = await create_run(session)
             run_id = scrape_run.id or 0
@@ -69,6 +62,22 @@ async def _run(
         typer.echo(f"Catálogo guardado en el run {run_id} ({stats})")
     finally:
         await engine.dispose()
+
+
+async def _dry_run(
+    out: Path | None, limit_careers: int | None, limit_offers: int | None = None
+) -> None:
+    async with SiiaaClient() as client:
+        catalog, stats = await ScraperService(client).collect(
+            limit_careers=limit_careers, limit_offers=limit_offers
+        )
+    destination = out or Path("data/siiaa-offers.json")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    payload = catalog.model_dump(by_alias=True, mode="json")
+    destination.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    typer.echo(f"JSON escrito en {destination} ({stats})")
+    require_complete(stats)
+    return
 
 
 def main() -> None:

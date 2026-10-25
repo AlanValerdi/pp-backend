@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from time import monotonic
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -8,7 +9,9 @@ from app.modules.catalog.repository import create_run, finish_run, save_catalog
 from app.modules.catalog.schemas import ScrapeRunRead
 from app.modules.scraper.client import SiiaaClient
 from app.modules.scraper.models import ScrapeRun
+from app.modules.scraper.preview import PreviewRead, ScrapePreview
 from app.modules.scraper.service import ScraperService, require_complete
+from app.modules.scraper.tracing import event, trace_scope
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +21,16 @@ class ScrapeAlreadyRunning(Exception):
 
 
 async def execute_run(run_id: int, *, limit_offers: int | None = None) -> dict:
+    with trace_scope(f"run-{run_id}"):
+        return await _execute_run(run_id, limit_offers=limit_offers)
+
+
+async def _execute_run(run_id: int, *, limit_offers: int | None = None) -> dict:
     """Publish atomically; limited runs preserve records outside their sample."""
     stats: dict = {"limitOffers": limit_offers} if limit_offers is not None else {}
+    started = monotonic()
+    stage = "collection"
+    event(logger, "run_started", run_id=run_id)
     try:
         async with SiiaaClient() as client:
             service = ScraperService(client)
@@ -28,7 +39,12 @@ async def execute_run(run_id: int, *, limit_offers: int | None = None) -> dict:
             else:
                 catalog, collected_stats = await service.collect(limit_offers=limit_offers)
                 stats.update(collected_stats)
+        stage = "validation"
+        event(logger, "validation_started")
         require_complete(stats)
+        event(logger, "validation_completed", **stats)
+        stage = "persistence"
+        event(logger, "persistence_started")
         async with SessionLocal() as session:
             if limit_offers is None:
                 await save_catalog(session, catalog, run_id)
@@ -36,11 +52,30 @@ async def execute_run(run_id: int, *, limit_offers: int | None = None) -> dict:
                 await save_catalog(session, catalog, run_id, deactivate_missing=False)
             await finish_run(session, run_id, "succeeded", stats, None)
             await session.commit()
+        event(
+            logger,
+            "catalog_committed",
+            sections=len(catalog.sections),
+            faculties=len(catalog.faculties),
+            areas=len(catalog.areas),
+            offers=len(catalog.offers),
+            relationships=sum(len(offer.area_details) for offer in catalog.offers),
+        )
+        event(logger, "run_succeeded", duration_seconds=round(monotonic() - started, 3))
     except (Exception, asyncio.CancelledError) as exc:
         error = "Scrape cancelled during shutdown" if isinstance(exc, asyncio.CancelledError) else str(exc)
+        event(
+            logger,
+            "run_cancelled" if isinstance(exc, asyncio.CancelledError) else "run_failed",
+            logging.ERROR,
+            stage=stage,
+            error_type=type(exc).__name__,
+            duration_seconds=round(monotonic() - started, 3),
+        )
         async with SessionLocal() as session:
             await finish_run(session, run_id, "failed", stats, error)
             await session.commit()
+        event(logger, "failure_recorded", run_id=run_id)
         raise
     return stats
 
@@ -51,6 +86,20 @@ class ScrapeJobs:
         self._closing = False
         self._lock = asyncio.Lock()
         self._tasks: set[asyncio.Task[None]] = set()
+        self._preview_tasks: set[asyncio.Task[PreviewRead]] = set()
+
+    async def preview(self) -> PreviewRead:
+        async with self._lock:
+            if self._running or self._closing:
+                raise ScrapeAlreadyRunning()
+            self._running = True
+            task = asyncio.create_task(ScrapePreview().run())
+            self._preview_tasks.add(task)
+        try:
+            return await task
+        finally:
+            self._preview_tasks.discard(task)
+            self._running = False
 
     async def start(self, session: AsyncSession) -> ScrapeRun:
         async with self._lock:
@@ -67,14 +116,15 @@ class ScrapeJobs:
         try:
             await execute_run(run_id)
         except Exception:
-            logger.exception("scrape run %s failed", run_id)
+            # execute_run records the failure with its trace and stage.
+            pass
         finally:
             self._running = False
 
     async def close(self) -> None:
         async with self._lock:
             self._closing = True
-        tasks = list(self._tasks)
+        tasks = [*self._tasks, *self._preview_tasks]
         if tasks:
             # Yield first so newly admitted tasks enter their cancellation handler.
             await asyncio.sleep(0)

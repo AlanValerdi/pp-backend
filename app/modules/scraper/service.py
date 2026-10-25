@@ -42,6 +42,7 @@ from app.modules.scraper.normalize import (
 from app.modules.scraper.parsers import parse_careers, parse_detail, parse_listing
 from app.modules.scraper.parsers.detail import AreaBlock, ParsedDetail
 from app.modules.scraper.parsers.listing import ListingRow
+from app.modules.scraper.tracing import DetailProgress, event
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +92,11 @@ class ScraperService:
             raise ValueError("limit_offers must be positive")
         if limit_careers is not None and limit_careers < 1:
             raise ValueError("limit_careers must be positive")
+        event(logger, "careers_started")
         careers = parse_careers(await self.client.get_careers_html())
         if limit_careers is not None:
             careers = careers[:limit_careers]
-        logger.info("carreras a consultar: %s", len(careers))
+        event(logger, "careers_parsed", count=len(careers))
 
         areas: dict[tuple[str, str], AreaDraft] = {}
         offers: dict[str, OfferDraft] = {}
@@ -106,6 +108,7 @@ class ScraperService:
             "detailErrors": 0,
         }
 
+        event(logger, "listings_started", total=len(careers))
         listings = await asyncio.gather(
             *(self._load_listing(career.name, career.un, career.se) for career in careers)
         )
@@ -114,6 +117,7 @@ class ScraperService:
                 stats["listingErrors"] += 1
             stats["rows"] += len(rows)
             self._absorb_career(career_name, rows, areas, offers)
+        event(logger, "listings_completed", rows=stats["rows"], failed=stats["listingErrors"])
 
         if limit_offers is not None:
             stats["limitOffers"] = limit_offers
@@ -127,11 +131,26 @@ class ScraperService:
         for offer in offers.values():
             for area_id, (v_01, ca, perfil) in offer.fetches.items():
                 jobs.append((offer, area_id, v_01, ca, perfil))
-        logger.info("detalles a consultar: %s", len(jobs))
+        progress = DetailProgress(logger, len(jobs))
+
+        async def load_detail(offer, area_id, v_01, ca):
+            detail, error = await self._load_detail(offer.listing.folio, v_01, ca)
+            event(
+                logger,
+                "detail_parsed" if error is None else "detail_failed",
+                logging.DEBUG if error is None else logging.ERROR,
+                folio=offer.listing.folio,
+                area_id=area_id,
+                error_type=type(error).__name__ if error else None,
+            )
+            progress.complete(detail is not None and error is None)
+            return detail, error
 
         details = await asyncio.gather(
-            *(self._load_detail(offer.listing.folio, v_01, ca) for offer, _, v_01, ca, _ in jobs)
+            *(load_detail(offer, area_id, v_01, ca) for offer, area_id, v_01, ca, _ in jobs)
         )
+        event(logger, "details_completed", parsed=progress.parsed, failed=progress.failed)
+        event(logger, "normalization_started")
         for (offer, area_id, _v_01, _ca, perfil), (detail, error) in zip(jobs, details, strict=True):
             if error is not None or detail is None:
                 stats["detailErrors"] += 1
@@ -139,6 +158,7 @@ class ScraperService:
                 continue
             stats["details"] += 1
             self._apply_detail(offer, area_id, perfil, detail, areas)
+            event(logger, "detail_normalized", logging.DEBUG, folio=offer.listing.folio, area_id=area_id)
 
         for offer in offers.values():
             for area_id in offer.fetches:
@@ -147,6 +167,7 @@ class ScraperService:
         catalog = _build_catalog(areas, offers)
         stats["offers"] = len(catalog.offers)
         stats["areas"] = len(catalog.areas)
+        event(logger, "normalization_completed", offers=len(catalog.offers), areas=len(catalog.areas))
         return catalog, stats
 
     async def _load_listing(
@@ -155,10 +176,10 @@ class ScraperService:
         try:
             html = await self.client.post_text("Ss_OFERTA_prog", {"un": un, "se": se})
             rows = parse_listing(html)
-            logger.info("carrera %s filas=%s", career_name, len(rows))
+            event(logger, "listing_parsed", career=career_name, rows=len(rows))
             return career_name, rows, None
         except Exception as exc:
-            logger.exception("no se pudo leer la carrera %s", career_name)
+            event(logger, "listing_failed", logging.ERROR, career=career_name, error_type=type(exc).__name__)
             return career_name, [], exc
 
     async def _load_detail(
@@ -168,7 +189,13 @@ class ScraperService:
             html = await self.client.post_text("Ss_OFERTA_CAR_PROG", {"v_01": v_01, "ca": ca})
             return parse_detail(html), None
         except Exception as exc:
-            logger.exception("no se pudo leer el detalle %s", folio)
+            event(
+                logger,
+                "detail_parse_or_fetch_failed",
+                logging.ERROR,
+                folio=folio,
+                error_type=type(exc).__name__,
+            )
             return None, exc
 
     def _absorb_career(
