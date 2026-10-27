@@ -73,6 +73,9 @@ async def seed(sessions, catalog):
 
 
 async def test_migrations_idempotence_and_deactivation(database, catalog):
+    catalog.offers[0].area_details[0].listing = catalog.offers[0].listing.model_copy(
+        update={"perfil_educativo": "Area-specific profile"}
+    )
     await seed(database, catalog)
     await seed(database, catalog)
     async with database() as session:
@@ -82,6 +85,7 @@ async def test_migrations_idempotence_and_deactivation(database, catalog):
         loaded = await load_catalog(session)
         assert loaded.areas[0].offer_ids == [loaded.offers[0].uuid]
         assert loaded.offers[0].area_details[0].area_uuid == loaded.areas[0].uuid
+        assert loaded.offers[0].area_details[0].listing.perfil_educativo == "Area-specific profile"
         assert loaded.meta.scraped_at
     empty = catalog.model_copy(deep=True)
     empty.offers = []

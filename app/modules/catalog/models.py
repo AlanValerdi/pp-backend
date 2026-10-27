@@ -1,5 +1,5 @@
 from sqlalchemy import Column, ForeignKey, Integer, Text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.sql.elements import quoted_name
 from sqlmodel import Field, SQLModel
 
@@ -109,3 +109,4 @@ class OfferAreaRow(SQLModel, table=True):
     )
     activities: str = Field(default="", sa_column=Column(Text, nullable=False))
     competencies: str = Field(default="", sa_column=Column(Text, nullable=False))
+    listing: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))

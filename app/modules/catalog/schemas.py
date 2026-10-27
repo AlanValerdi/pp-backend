@@ -98,6 +98,7 @@ class OfferAreaDetail(APIModel):
     area_uuid: str
     activities: str
     competencies: str
+    listing: OfferListing | None = None
 
 
 class Offer(APIModel):

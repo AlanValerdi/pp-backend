@@ -81,20 +81,43 @@ Configura las mismas credenciales y base en ambas URLs; codifica los caracteres 
 
 ## Tipos TypeScript para el frontend
 
-Los modelos Pydantic definen el contrato y FastAPI lo publica en `http://localhost:8000/openapi.json`. No es necesario ejecutar el scraper para generar tipos. Con la API en marcha, ejecuta en el frontend:
+Los modelos Pydantic y los endpoints registrados en FastAPI definen el contrato OpenAPI.
+Cuando cambies campos de los modelos, parámetros, respuestas o agregues un endpoint,
+regenera los tipos de **PPracticaSS**. No es necesario ejecutar el scraper.
+
+Desde la raíz de `pp-backend`, reconstruye y levanta la API para publicar los cambios:
 
 ```bash
-npx openapi-typescript http://localhost:8000/openapi.json -o lib/api-types.d.ts
+docker compose up -d --build api
 ```
+
+Después, desde la misma raíz, genera los tipos en el frontend existente:
+
+```bash
+cd ../PPracticaSS
+npx --yes openapi-typescript http://localhost:8001/openapi.json -o lib/api-types.d.ts
+pnpm exec tsc --noEmit --incremental false
+```
+
+Compose expone la API en el puerto `8001`. Si ejecutas FastAPI localmente en el
+puerto `8000`, cambia la URL a `http://localhost:8000/openapi.json`.
+Los endpoints nuevos deben estar registrados en la aplicación para aparecer en
+OpenAPI. El archivo generado incluye tanto los esquemas (`components`) como las
+rutas y operaciones (`paths`); no crea un cliente HTTP ni actualiza los componentes
+del frontend automáticamente.
+
+Consume los tipos directamente o crea alias en un archivo como `lib/types/catalog.ts`:
 
 ```ts
-import type { components } from "./api-types";
+import type { components } from "@/lib/api-types";
 
-type Offer = components["schemas"]["Offer"];
-type Catalog = components["schemas"]["Catalog"];
+export type Area = components["schemas"]["Area"];
+export type Offer = components["schemas"]["Offer"];
+export type Catalog = components["schemas"]["Catalog"];
 ```
 
-Regenera el archivo cuando cambie el contrato de la API.
+No edites `lib/api-types.d.ts` manualmente: cada generación reemplaza su contenido.
+Revisa el diff generado y adapta los consumidores si cambió el contrato.
 
 ## Exportar e importar una instancia
 

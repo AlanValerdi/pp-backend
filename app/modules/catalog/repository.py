@@ -143,7 +143,12 @@ async def offers_for_area(session: AsyncSession, area_uuid: str) -> list[Offer]:
         area_links = (
             await session.exec(select(OfferAreaRow).where(OfferAreaRow.offer_uuid == row.uuid))
         ).all()
-        offers.append(_offer_from_row(row, area_links))
+        offer = _offer_from_row(row, area_links)
+        if link.listing is not None:
+            offer.listing = OfferListing.model_validate(link.listing)
+        else:
+            offer.listing = offer.listing.model_copy(update={"perfil_educativo": ""})
+        offers.append(offer)
     offers.sort(key=lambda offer: offer.listing.folio)
     return offers
 
@@ -241,6 +246,7 @@ async def _replace_links(session: AsyncSession, offer: Offer) -> None:
                 area_uuid=detail.area_uuid,
                 activities=detail.activities,
                 competencies=detail.competencies,
+                listing=detail.listing.model_dump() if detail.listing is not None else None,
             )
         )
 
@@ -344,6 +350,7 @@ def _offer_from_row(row: OfferRow, links: Sequence[OfferAreaRow]) -> Offer:
                     area_uuid=link.area_uuid,
                     activities=link.activities,
                     competencies=link.competencies,
+                    listing=OfferListing.model_validate(link.listing) if link.listing is not None else None,
                 )
                 for link in links
             ),

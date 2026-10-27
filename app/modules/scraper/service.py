@@ -233,6 +233,12 @@ class ScraperService:
             for level in _target_levels(row.perfil_educativo, available):
                 draft = next(item for item in drafts if item.level == level)
                 draft.offer_ids.add(offer.uuid)
+                offer.area_details.setdefault(
+                    draft.uuid,
+                    OfferAreaDetail(
+                        area_uuid=draft.uuid, activities="", competencies="", listing=_listing(row)
+                    ),
+                )
                 if draft.uuid not in offer.fetches and row.v_01:
                     offer.fetches[draft.uuid] = (row.v_01, row.ca, row.perfil_educativo)
 
@@ -255,6 +261,7 @@ class ScraperService:
             area_uuid=area_id,
             activities=block.activities if block else "",
             competencies=block.competencies if block else "",
+            listing=offer.area_details[area_id].listing,
         )
         faculty = _choose_faculty(detail, perfil)
         if faculty:

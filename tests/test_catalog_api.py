@@ -57,7 +57,7 @@ def test_sample_catalog_matches_the_api_schema() -> None:
     assert set(dumped) == {"meta", "sections", "faculties", "areas", "offers"}
     assert set(dumped["offers"][0]) == set(payload["offers"][0])
     assert set(dumped["offers"][0]["listing"]) == set(payload["offers"][0]["listing"])
-    assert set(dumped["offers"][0]["areaDetails"][0]) == {"areaUuid", "activities", "competencies"}
+    assert set(dumped["offers"][0]["areaDetails"][0]) == {"areaUuid", "activities", "competencies", "listing"}
     assert catalog.sections[3].id == "economia"
 
 
