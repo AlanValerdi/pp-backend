@@ -6,8 +6,10 @@ from sqlmodel import SQLModel
 
 from alembic import context
 from app.core.config import get_settings
+from app.modules.auth import models as auth_models
 from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.scraper import models as scraper_models  # noqa: F401
+
 
 config = context.config
 if config.config_file_name is not None:

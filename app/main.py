@@ -10,6 +10,7 @@ from app.core.logging import configure_logging
 from app.modules.catalog.router import health_router
 from app.modules.scraper.jobs import ScrapeJobs
 
+from starlette.middleware.sessions import SessionMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,7 +25,21 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="pp-backend", version="0.1.0", lifespan=lifespan)
+
+    if not settings.oauth_session_secret:
+        raise RuntimeError("Falta configurar OAUTH_SESSION_SECRET")
+
     app.state.scrape_jobs = ScrapeJobs()
+
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.oauth_session_secret,
+        session_cookie="pp_oauth",
+        max_age=600,
+        same_site="lax",
+        https_only=settings.cookie_secure,
+    )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -38,3 +53,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

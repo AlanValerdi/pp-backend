@@ -20,6 +20,21 @@ class Settings(BaseSettings):
     scrape_delay_seconds: float = Field(default=0.25, ge=0)
     log_level: str = "INFO"
 
+    # Inicio de sesión con Google
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = (
+        "http://localhost:3000/api/backend/auth/google/callback"
+    )
+
+    # Transacción temporal de OAuth
+    oauth_session_secret: str = ""
+
+    # Sesión de nuestra aplicación
+    frontend_url: str = "http://localhost:3000"
+    session_ttl_seconds: int = Field(default=600, gt=0)
+    cookie_secure: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:
