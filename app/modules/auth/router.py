@@ -5,6 +5,7 @@ from httpx2 import HTTPError
 from joserfc.errors import JoseError
 
 from app.api.deps import SessionDep
+from app.api.deps import BrowserRequestDep
 from app.core.config import get_settings
 from app.modules.auth import service
 from app.modules.auth.oauth import get_oauth
@@ -119,18 +120,9 @@ async def read_current_user(
 async def logout(
     request: Request,
     session: SessionDep,
+    _: BrowserRequestDep,
 ) -> Response:
     settings = get_settings()
-
-    if (
-        request.headers.get("origin") != settings.frontend_url.rstrip("/")
-        or request.headers.get("x-requested-with") != "XMLHttpRequest"
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Origen o encabezado de solicitud inválido",
-            headers={"Cache-Control": "no-store"},
-        )
 
     await service.logout(
         session,

@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.modules.auth import models as auth_models
 from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.scraper import models as scraper_models  # noqa: F401
+from app.modules.saved_offers import models as saved_offer_models
 
 
 config = context.config

@@ -3,7 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.modules.auth.models import User, UserSession
@@ -26,7 +26,7 @@ async def upsert_google_user(
 
     statement = insert(User).values(user.model_dump())
 
-    statement = statement.on_conflict_do_update(
+    upsert_statement = statement.on_conflict_do_update(
         index_elements=[User.google_sub],
         set_={
             "email": statement.excluded.email,
@@ -37,7 +37,7 @@ async def upsert_google_user(
     ).returning(User)
 
     result = await session.exec(
-        statement,
+        upsert_statement,
         execution_options={"populate_existing": True},
     )
     return result.scalar_one()
@@ -67,7 +67,7 @@ async def get_user_for_session(
 ) -> User | None:
     statement = (
         select(User)
-        .join(UserSession, UserSession.user_id == User.id)
+        .join(UserSession, col(UserSession.user_id) == User.id)
         .where(
             UserSession.token_hash == token_hash,
             UserSession.expires_at > now,
@@ -83,6 +83,6 @@ async def delete_user_session(
     token_hash: str,
 ) -> None:
     statement = delete(UserSession).where(
-        UserSession.token_hash == token_hash,
+        col(UserSession.token_hash) == token_hash,
     )
     await session.execute(statement)

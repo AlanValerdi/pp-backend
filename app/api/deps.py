@@ -5,7 +5,8 @@ from fastapi import Depends, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.db import get_session
-from app.core.security import require_admin
+
+from app.core.security import require_admin, require_browser_request
 from app.modules.scraper.jobs import ScrapeJobs
 from app.modules.auth import service as auth_service
 from app.modules.auth.models import User
@@ -13,6 +14,7 @@ from app.modules.auth.models import User
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 AdminDep = Annotated[None, Depends(require_admin)]
+BrowserRequestDep = Annotated[None, Depends(require_browser_request)]
 
 
 async def get_scrape_jobs(request: Request) -> ScrapeJobs:
