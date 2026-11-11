@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     scrape_timeout_seconds: float = Field(default=60, gt=0)
     scrape_delay_seconds: float = Field(default=0.25, ge=0)
     log_level: str = "INFO"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_timeout_seconds: float = Field(default=45, gt=0, le=120)
 
     # Inicio de sesión con Google
     google_client_id: str = ""

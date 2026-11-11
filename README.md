@@ -79,6 +79,30 @@ Compose lee `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` y `COMPOSE_DATAB
 
 Configura las mismas credenciales y base en ambas URLs; codifica los caracteres especiales del usuario o contraseña para usarlos en una URL. Cambiar `.env` no modifica usuarios ni contraseñas en un volumen PostgreSQL ya inicializado.
 
+## Ofertas guardadas
+
+`GET /api/v1/saved-offers` requiere una sesión válida en la cookie `pp_session` y
+devuelve solo los guardados del usuario, del más reciente al más antiguo. Incluye
+título, folio, remuneración, disponibilidad, carrera para el enlace al detalle y
+datos de contacto y ubicación. Las ofertas inactivas permanecen en la lista con
+`isActive: false`; `areaSlug` es `null` si no tienen carreras activas asociadas.
+Si hay varias carreras activas, se elige la primera por slug. Una lista vacía es `[]`.
+
+`POST /api/v1/saved-offers/{offer_uuid}` guarda una oferta existente para el usuario
+de la sesión, sin body. Requiere además `Origin` igual a `FRONTEND_URL` y
+`X-Requested-With: XMLHttpRequest`. Responde `201` al crear y `200` si ya estaba
+guardada, conservando su fecha original.
+
+`DELETE /api/v1/saved-offers/{offer_uuid}` elimina únicamente el guardado del usuario
+de la sesión, con la misma autenticación y protección de escritura del POST.
+Responde `204` sin contenido aunque ya no estuviera guardada. Permite quitar ofertas
+inactivas y no elimina la oferta del catálogo. Todas estas rutas usan `Cache-Control: no-store`.
+
+El frontend consulta el listado desde el servidor reenviando la cookie y guarda
+mediante Server Actions que invalidan `/guardados` y el detalle de ofertas después
+de guardar o quitar. Los tipos deben regenerarse
+cuando cambie el contrato, siguiendo el procedimiento siguiente.
+
 ## Tipos TypeScript para el frontend
 
 Los modelos Pydantic y los endpoints registrados en FastAPI definen el contrato OpenAPI.
@@ -163,3 +187,60 @@ TEST_DATABASE_URL=postgresql+asyncpg://pp:change-me@localhost:5432/pp_backend_te
 ```
 
 Estos tests comprueban migraciones, idempotencia, desactivación, rollback y endpoints con datos reales en PostgreSQL. Sin `TEST_DATABASE_URL` se omiten explícitamente.
+
+## Recomendaciones reales con Gemini
+
+La pantalla `/analisis-cv` permite elegir una carrera, seleccionar un CV ficticio en PDF
+y obtener un resumen y hasta tres ofertas activas del catálogo, con una explicación de afinidad.
+El endpoint `POST /api/v1/recommendations/analyze` recibe `cv` y `areaSlug` como multipart,
+requiere sesión y valida el origen y `X-Requested-With: XMLHttpRequest`.
+
+Configura únicamente en el `.env` del backend:
+
+```dotenv
+GEMINI_API_KEY=TU_CLAVE_LOCAL
+GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_TIMEOUT_SECONDS=45
+```
+
+La clave se obtiene en https://aistudio.google.com/apikey. No debe incorporarse al frontend,
+ni a variables `NEXT_PUBLIC_*`, ni a archivos versionados. La autenticación de usuarios con
+Google y la clave de Gemini son configuraciones distintas.
+
+El modelo es configurable. La demostración utiliza Flash-Lite; si Google reporta saturación,
+cuota agotada o timeout, la pantalla muestra el error y permite volver a intentar. No hay
+reintentos automáticos ni resultados de ejemplo sustituyendo una llamada fallida.
+
+### Probar desde la pantalla
+
+1. Instala las dependencias con `uv sync` o reconstruye la API con
+   `docker compose up -d --build --no-deps api`. No requiere migraciones nuevas.
+2. Inicia sesión en el frontend y abre **Ofertas sugeridas**.
+3. Selecciona **Ing. Ingeniería Tecnologías de la Información**, confirma que usas un CV
+   ficticio y elige uno de los archivos de `output/pdf/`:
+   `cv-demo-desarrollo-web.pdf` o `cv-demo-analisis-datos.pdf`.
+4. Pulsa **Realizar análisis** y comprueba el resumen y las explicaciones. Ambos CV tienen
+   perfiles diferentes; el orden y el número de recomendaciones pueden variar entre llamadas.
+5. Abre **Ver oferta** para verificar los datos reales. **Guardar** reutiliza el sistema de
+   guardados existente; **Aplicar** abre el correo y **Ver ubicación** busca la dirección en Google Maps.
+
+La API valida formato, estructura, contraseña y tamaño máximo de 10 MB del PDF. Solo envía
+a Gemini el documento y los datos profesionales de las ofertas de la carrera, sin datos de
+contacto de los supervisores. El CV y las recomendaciones no se almacenan permanentemente
+por nuestra aplicación; el archivo de subida se cierra al terminar. La vista previa y los
+resultados se eliminan de la pantalla al cambiar el CV o la carrera.
+
+En el nivel gratuito Google puede utilizar el contenido para mejorar sus productos:
+https://ai.google.dev/gemini-api/docs/pricing. Para esta demostración utiliza exclusivamente
+los CV ficticios. El resumen indica información ausente como **No especificado** y puede
+haber menos de tres recomendaciones o ninguna. Una sugerencia no garantiza elegibilidad.
+Los identificadores se verifican contra el catálogo; título, folio, apoyos y enlaces proceden
+de la base de datos, no de la generación del modelo.
+
+```bash
+uv run pytest tests/test_recommendations.py -q
+```
+
+Estas pruebas usan un proveedor simulado y no consumen cuota de Google. Cubren autenticación,
+origen, PDF inválido/protegido/grande, carrera sin ofertas, identificadores ajenos o repetidos,
+respuesta inválida, cuota agotada, timeout y cierre del cliente de Gemini.
