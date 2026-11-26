@@ -14,6 +14,19 @@ from app.modules.auth.schemas import UserRead
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 SESSION_COOKIE = "pp_session"
+RETURN_PATH_KEY = "return_path"
+MAX_RETURN_PATH_LENGTH = 512
+
+
+def safe_return_path(value: str | None) -> str | None:
+    """Return the value only if it is a same-site relative path (prevents open redirects)."""
+    if not value or len(value) > MAX_RETURN_PATH_LENGTH:
+        return None
+    if not value.startswith("/") or value.startswith("//") or value.startswith("/\\"):
+        return None
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        return None
+    return value
 
 
 def login_error_response() -> RedirectResponse:
@@ -26,12 +39,15 @@ def login_error_response() -> RedirectResponse:
 
 
 @router.get("/google/login")
-async def google_login(request: Request) -> RedirectResponse:
+async def google_login(request: Request, next: str | None = None) -> RedirectResponse:
     settings = get_settings()
     google = get_oauth().create_client("google")
 
     # Este espacio se usa exclusivamente para la transacción OAuth.
     request.session.clear()
+    return_path = safe_return_path(next)
+    if return_path:
+        request.session[RETURN_PATH_KEY] = return_path
 
     response = await google.authorize_redirect(
         request,
@@ -48,6 +64,7 @@ async def google_callback(
 ) -> RedirectResponse:
     settings = get_settings()
     google = get_oauth().create_client("google")
+    return_path = safe_return_path(request.session.get(RETURN_PATH_KEY))
 
     try:
         token = await google.authorize_access_token(request)
@@ -76,8 +93,12 @@ async def google_callback(
         avatar_url=profile.get("picture"),
     )
 
+    redirect_url = settings.frontend_url
+    if return_path:
+        redirect_url = f"{settings.frontend_url.rstrip('/')}{return_path}"
+
     response = RedirectResponse(
-        url=settings.frontend_url,
+        url=redirect_url,
         status_code=303,
         headers={"Cache-Control": "no-store"},
     )
