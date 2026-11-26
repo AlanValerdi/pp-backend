@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Column, DateTime, Text
+from sqlalchemy import CheckConstraint, Column, DateTime, Text
 from sqlmodel import Field, SQLModel
 
 from app.core.db import NAMING_CONVENTION
@@ -15,12 +15,14 @@ def utc_now() -> datetime:
 
 class User(SQLModel, table=True):
     __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role in ('user', 'admin')", name="role_valid"),)
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     google_sub: str = Field(sa_column=Column(Text, nullable=False, unique=True))
     email: str = Field(sa_column=Column(Text, nullable=False))
     name: str = Field(sa_column=Column(Text, nullable=False))
     avatar_url: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    role: str = Field(default="user", sa_column=Column(Text, nullable=False, server_default="user"))
     created_at: datetime = Field(
         default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False)
     )

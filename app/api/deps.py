@@ -39,5 +39,16 @@ async def require_current_user(
     return user
 
 
+async def require_admin_user(user: Annotated[User, Depends(require_current_user)]) -> User:
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Se requiere rol de administrador",
+            headers={"Cache-Control": "no-store"},
+        )
+    return user
+
+
 JobsDep = Annotated[ScrapeJobs, Depends(get_scrape_jobs)]
 CurrentUserDep = Annotated[User, Depends(require_current_user)]
+AdminUserDep = Annotated[User, Depends(require_admin_user)]
