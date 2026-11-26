@@ -7,7 +7,13 @@ import respx
 from app.modules.geocoding import repository
 from app.modules.geocoding.client import NOMINATIM_URL, NominatimClient
 from app.modules.geocoding.models import GeocodedAddress
-from app.modules.geocoding.normalize import geocoding_query, is_virtual, normalize_address
+from app.modules.geocoding.normalize import (
+    extract_postal_code,
+    geocoding_query,
+    infer_state,
+    is_virtual,
+    normalize_address,
+)
 from app.modules.geocoding.service import run_geocoding
 
 
@@ -41,6 +47,27 @@ def test_geocoding_query_appends_region_only_when_state_is_missing():
     )
     assert geocoding_query("Calle 4 Sur 104, Puebla") == "Calle 4 Sur 104, Puebla"
     assert geocoding_query("Insurgentes Sur, Ciudad de México") == "Insurgentes Sur, Ciudad de México"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Av. Juárez 12, Col. Centro, 72530 Puebla", "72530"),
+        ("Calle 5, CP. 72530", "72530"),
+        ("Calle 5, C.P. 72460, Puebla", "72460"),
+        ("Reforma 1 CP11560 CDMX", "11560"),
+        ("Calle 4 Sur 104, Puebla", None),
+        ("Calle 123456, Puebla", None),
+    ],
+)
+def test_extract_postal_code(raw, expected):
+    assert extract_postal_code(raw) == expected
+
+
+def test_infer_state_defaults_to_puebla():
+    assert infer_state("Reforma 1 CP11560 CDMX") == "Ciudad de México"
+    assert infer_state("Insurgentes, Ciudad de México") == "Ciudad de México"
+    assert infer_state("Calle 5, 72530") == "Puebla"
 
 
 # --- Nominatim client -------------------------------------------------------
@@ -118,13 +145,26 @@ class FakeStore:
         if row.status != "pending":
             return
         row.lat, row.lng, row.status = lat, lng, status
-        row.source = "nominatim" if status == "ok" else None
+        row.source = "nominatim" if status in ("ok", "approximate") else None
+
+    async def reset_not_found(self, session):
+        rows = [r for r in self.rows.values() if r.status == "not_found"]
+        for row in rows:
+            row.status = "pending"
+        return len(rows)
 
 
 @pytest.fixture
 def install_store(monkeypatch):
     def install(store: FakeStore) -> FakeStore:
-        for name in ("active_offer_addresses", "insert_missing", "list_by_status", "save_result"):
+        names = (
+            "active_offer_addresses",
+            "insert_missing",
+            "list_by_status",
+            "save_result",
+            "reset_not_found",
+        )
+        for name in names:
             monkeypatch.setattr(repository, name, getattr(store, name))
         return store
 
@@ -192,3 +232,72 @@ async def test_job_leaves_row_pending_when_the_provider_fails(install_store):
     assert store.rows["biblioteca central"].status == "pending"
     assert store.rows["calle 4 sur 104, puebla"].status == "ok"
     assert (stats.geocoded, stats.failed) == (1, 1)
+
+
+@respx.mock
+async def test_client_postal_code_search_is_structured_and_shares_the_throttle():
+    route = respx.get(NOMINATIM_URL).mock(
+        return_value=httpx.Response(200, json=[{"lat": "19.1", "lon": "-98.1"}])
+    )
+    sleep = AsyncMock()
+    async with NominatimClient(sleep=sleep, clock=lambda: 100.0) as client:
+        await client.geocode("a")
+        result = await client.geocode_postal_code("72530", "Puebla")
+    assert result == (19.1, -98.1)
+    sleep.assert_awaited_once_with(pytest.approx(1.0))
+    params = route.calls.last.request.url.params
+    assert params["postalcode"] == "72530"
+    assert params["state"] == "Puebla"
+    assert params["countrycodes"] == "mx"
+    assert "q" not in params
+
+
+async def test_job_falls_back_to_postal_code_and_marks_row_approximate(install_store):
+    store = install_store(FakeStore(["Calle 5, CP. 72530", "Calle 6, C.P. 11560, CDMX", "Calle 7"]))
+    client = AsyncMock()
+    client.geocode.return_value = None
+    client.geocode_postal_code.side_effect = [(19.0, -98.0), None]
+
+    stats = await run_geocoding(AsyncMock(), client)
+
+    assert [c.args for c in client.geocode_postal_code.await_args_list] == [
+        ("72530", "Puebla"),
+        ("11560", "Ciudad de México"),
+    ]
+    assert store.rows["calle 5, cp. 72530"].status == "approximate"
+    assert store.rows["calle 5, cp. 72530"].source == "nominatim"
+    assert store.rows["calle 6, c.p. 11560, cdmx"].status == "not_found"
+    assert store.rows["calle 7"].status == "not_found"  # no postal code: no fallback call
+    assert (stats.geocoded, stats.approximate, stats.not_found) == (0, 1, 2)
+
+
+async def test_job_does_not_use_fallback_when_full_query_succeeds(install_store):
+    install_store(FakeStore(["Calle 5, CP. 72530"]))
+    client = AsyncMock()
+    client.geocode.return_value = (19.0, -98.0)
+    await run_geocoding(AsyncMock(), client)
+    client.geocode_postal_code.assert_not_awaited()
+
+
+async def test_retry_not_found_requeries_them_but_never_manual(install_store):
+    manual = GeocodedAddress(
+        address_key="plaza manual", raw_address="Plaza Manual", lat=1.0, lng=2.0,
+        status="manual", source="admin",
+    )  # fmt: skip
+    missing = GeocodedAddress(
+        address_key="calle 5, cp. 72530", raw_address="Calle 5, CP. 72530", status="not_found"
+    )
+    store = install_store(FakeStore(["Calle 5, CP. 72530", "Plaza Manual"], [manual, missing]))
+    client = AsyncMock()
+    client.geocode.return_value = None
+    client.geocode_postal_code.return_value = (19.0, -98.0)
+
+    untouched = await run_geocoding(AsyncMock(), client)
+    client.geocode.assert_not_awaited()
+    assert untouched.approximate == 0
+
+    stats = await run_geocoding(AsyncMock(), client, retry_not_found=True)
+
+    assert store.rows["calle 5, cp. 72530"].status == "approximate"
+    assert store.rows["plaza manual"].status == "manual"
+    assert stats.approximate == 1

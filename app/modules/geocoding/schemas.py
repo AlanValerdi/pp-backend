@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
-GeocodingStatus = Literal["pending", "ok", "not_found", "manual", "virtual"]
+GeocodingStatus = Literal["pending", "ok", "approximate", "not_found", "manual", "virtual"]
 
 
 class CamelModel(BaseModel):
@@ -19,6 +19,7 @@ class MapPin(CamelModel):
     address: str
     lat: float
     lng: float
+    precision: Literal["exact", "approximate"]
 
 
 class GeocodedAddressRead(CamelModel):
@@ -39,5 +40,6 @@ class ManualCoordinates(CamelModel):
 class GeocodingRunRead(CamelModel):
     created: int
     geocoded: int
+    approximate: int
     not_found: int
     failed: int

@@ -44,10 +44,17 @@ class NominatimClient:
         self._last_call = self._clock()
 
     async def geocode(self, query: str) -> tuple[float, float] | None:
+        return await self._search({"q": query})
+
+    async def geocode_postal_code(self, postal_code: str, state: str) -> tuple[float, float] | None:
+        """Structured search by postal code (approximate location)."""
+        return await self._search({"postalcode": postal_code, "state": state, "country": "Mexico"})
+
+    async def _search(self, query: dict[str, str]) -> tuple[float, float] | None:
         await self._throttle()
         response = await self._http.get(
             NOMINATIM_URL,
-            params={"q": query, "format": "jsonv2", "limit": 1, "countrycodes": "mx"},
+            params={**query, "format": "jsonv2", "limit": 1, "countrycodes": "mx"},
         )
         response.raise_for_status()
         results = response.json()

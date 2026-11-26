@@ -85,13 +85,16 @@ async def test_admin_lists_addresses_filtered_by_status(geo_app, monkeypatch):
     monkeypatch.setattr(service, "list_addresses", listing)
     async with AsyncClient(transport=ASGITransport(app=geo_app), base_url="http://test") as client:
         response = await client.get("/api/v1/admin/geocoding?status=not_found")
+        approx = await client.get("/api/v1/admin/geocoding?status=approximate")
         invalid = await client.get("/api/v1/admin/geocoding?status=bogus")
     assert response.status_code == 200
     assert response.json()[0]["addressKey"] == "plaza"
     assert response.json()[0]["rawAddress"] == "Plaza"
     assert response.json()[0]["status"] == "not_found"
-    assert listing.await_args.kwargs["status"] == "not_found"
+    assert listing.await_args_list[0].kwargs["status"] == "not_found"
     assert invalid.status_code == 422
+    assert approx.status_code == 200
+    assert listing.await_args.kwargs["status"] == "approximate"
 
 
 async def test_admin_sets_manual_coordinates(geo_app, monkeypatch):
@@ -141,13 +144,22 @@ async def test_admin_put_requires_browser_headers(geo_app, monkeypatch):
 
 async def test_admin_triggers_a_geocoding_run(geo_app, monkeypatch):
     _login(monkeypatch, "admin")
-    run = AsyncMock(return_value=RunStats(created=2, geocoded=1, not_found=1, failed=0))
+    run = AsyncMock(return_value=RunStats(created=2, geocoded=1, approximate=3, not_found=1, failed=0))
     monkeypatch.setattr(service, "run_geocoding", run)
     async with AsyncClient(transport=ASGITransport(app=geo_app), base_url="http://test") as client:
         response = await client.post("/api/v1/geocoding/runs", headers=BROWSER)
     assert response.status_code == 200
-    assert response.json() == {"created": 2, "geocoded": 1, "notFound": 1, "failed": 0}
-    run.assert_awaited_once()
+    assert response.json() == {
+        "created": 2,
+        "geocoded": 1,
+        "approximate": 3,
+        "notFound": 1,
+        "failed": 0,
+    }
+    assert run.await_args.kwargs == {"retry_not_found": False}
+    async with AsyncClient(transport=ASGITransport(app=geo_app), base_url="http://test") as client:
+        await client.post("/api/v1/geocoding/runs?retryNotFound=true", headers=BROWSER)
+    assert run.await_args.kwargs == {"retry_not_found": True}
 
 
 async def test_set_manual_is_stored_as_manual_by_admin(monkeypatch):
@@ -175,6 +187,7 @@ def _offers():
         ("u5", "F5", "Offer 5", "Virtual", "salud"),
         ("u6", "F6", "Offer 6", "Plaza Unknown", "salud"),
         ("u7", "F7", "Offer 7", "Plaza Broken", "salud"),
+        ("u8", "F8", "Offer 8", "Plaza Approx", "salud"),
     ]
 
 
@@ -185,6 +198,7 @@ def _rows():
         "plaza pending": _row("plaza pending", "pending"),
         "plaza missing": _row("plaza missing", "not_found"),
         "virtual": _row("virtual", "virtual"),
+        "plaza approx": _row("plaza approx", "approximate", 21.0, -97.0),
         "plaza broken": _row("plaza broken", "ok"),  # ok without coordinates must be ignored
     }
 
@@ -193,7 +207,8 @@ async def test_list_pins_returns_only_ok_and_manual_addresses(monkeypatch):
     monkeypatch.setattr(repository, "active_offers", AsyncMock(return_value=_offers()))
     monkeypatch.setattr(repository, "all_by_key", AsyncMock(return_value=_rows()))
     pins = await service.list_pins(AsyncMock())
-    assert [p.offer_uuid for p in pins] == ["u1", "u2"]
+    assert [p.offer_uuid for p in pins] == ["u1", "u2", "u8"]
+    assert [p.precision for p in pins] == ["exact", "exact", "approximate"]
     assert (pins[0].lat, pins[0].lng) == (19.0, -98.0)
     assert (pins[1].lat, pins[1].lng) == (20.0, -99.0)
     assert pins[1].address == "plaza  MANUAL"
@@ -213,6 +228,7 @@ async def test_map_pins_endpoint_is_public_and_camel_case(geo_app, monkeypatch):
         "address": "Plaza Ok",
         "lat": 19.0,
         "lng": -98.0,
+        "precision": "exact",
     }
     assert response.json()[1]["areaSlug"] is None
 

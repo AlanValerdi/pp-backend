@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.api.deps import AdminUserDep, BrowserRequestDep, SessionDep
 from app.modules.geocoding import service
@@ -70,12 +70,14 @@ async def run_geocoding(
     geocoder: GeocoderDep,
     _: AdminUserDep,
     __: BrowserRequestDep,
+    retry_not_found: Annotated[bool, Query(alias="retryNotFound")] = False,
 ) -> GeocodingRunRead:
     response.headers["Cache-Control"] = "no-store"
-    stats = await service.run_geocoding(session, geocoder)
+    stats = await service.run_geocoding(session, geocoder, retry_not_found=retry_not_found)
     return GeocodingRunRead(
         created=stats.created,
         geocoded=stats.geocoded,
+        approximate=stats.approximate,
         not_found=stats.not_found,
         failed=stats.failed,
     )

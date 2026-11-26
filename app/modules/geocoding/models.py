@@ -7,7 +7,7 @@ from app.core.db import NAMING_CONVENTION
 
 SQLModel.metadata.naming_convention = NAMING_CONVENTION
 
-STATUSES = ("pending", "ok", "not_found", "manual", "virtual")
+STATUSES = ("pending", "ok", "approximate", "not_found", "manual", "virtual")
 SOURCES = ("nominatim", "admin")
 
 
@@ -18,7 +18,10 @@ def utc_now() -> datetime:
 class GeocodedAddress(SQLModel, table=True):
     __tablename__ = "geocoded_addresses"
     __table_args__ = (
-        CheckConstraint("status in ('pending', 'ok', 'not_found', 'manual', 'virtual')", name="status_valid"),
+        CheckConstraint(
+            "status in ('pending', 'ok', 'approximate', 'not_found', 'manual', 'virtual')",
+            name="status_valid",
+        ),
         CheckConstraint("source is null or source in ('nominatim', 'admin')", name="source_valid"),
     )
 

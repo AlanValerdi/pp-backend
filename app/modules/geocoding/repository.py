@@ -50,11 +50,22 @@ async def save_result(
             lat=lat,
             lng=lng,
             status=status,
-            source="nominatim" if status == "ok" else None,
+            source="nominatim" if status in ("ok", "approximate") else None,
             updated_at=datetime.now(UTC),
         )
     )
     await session.exec(statement)
+
+
+async def reset_not_found(session: AsyncSession) -> int:
+    """Send not_found rows back to pending so the job retries them (manual rows are not affected)."""
+    statement = (
+        update(GeocodedAddress)
+        .where(col(GeocodedAddress.status) == "not_found")
+        .values(status="pending", updated_at=datetime.now(UTC))
+        .returning(col(GeocodedAddress.address_key))
+    )
+    return len((await session.exec(statement)).all())
 
 
 async def list_addresses(session: AsyncSession, *, status: str | None = None) -> list[GeocodedAddress]:
