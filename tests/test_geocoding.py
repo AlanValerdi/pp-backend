@@ -247,7 +247,9 @@ async def test_client_postal_code_search_is_structured_and_shares_the_throttle()
     sleep.assert_awaited_once_with(pytest.approx(1.0))
     params = route.calls.last.request.url.params
     assert params["postalcode"] == "72530"
-    assert params["state"] == "Puebla"
+    # Nominatim returns no results when postalcode is combined with state/country.
+    assert "state" not in params
+    assert "country" not in params
     assert params["countrycodes"] == "mx"
     assert "q" not in params
 

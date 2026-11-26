@@ -48,7 +48,8 @@ class NominatimClient:
 
     async def geocode_postal_code(self, postal_code: str, state: str) -> tuple[float, float] | None:
         """Structured search by postal code (approximate location)."""
-        return await self._search({"postalcode": postal_code, "state": state, "country": "Mexico"})
+        # Mexican postal codes are unique nationwide; adding state/country makes Nominatim return nothing.
+        return await self._search({"postalcode": postal_code})
 
     async def _search(self, query: dict[str, str]) -> tuple[float, float] | None:
         await self._throttle()
