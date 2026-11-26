@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -15,3 +16,4 @@ class UserRead(BaseModel):
     email: str
     name: str
     avatar_url: str | None
+    role: Literal["user", "admin"]

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash-lite"
     gemini_timeout_seconds: float = Field(default=45, gt=0, le=120)
 
+    # Contacto incluido en el User-Agent de Nominatim (política de uso)
+    geocoder_contact_email: str = ""
+
     # Inicio de sesión con Google
     google_client_id: str = ""
     google_client_secret: str = ""

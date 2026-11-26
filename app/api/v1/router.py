@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.modules.auth.router import router as auth_router
 from app.modules.catalog.router import router as catalog_router
+from app.modules.geocoding.router import router as geocoding_router
 from app.modules.scraper.router import router as scrape_router
 from app.modules.saved_offers.router import router as saved_offers_router
 from app.modules.recommendations.router import router as recommendations_router
@@ -12,4 +13,5 @@ api_router.include_router(catalog_router)
 api_router.include_router(scrape_router)
 api_router.include_router(saved_offers_router)
 api_router.include_router(recommendations_router)
+api_router.include_router(geocoding_router)
 
