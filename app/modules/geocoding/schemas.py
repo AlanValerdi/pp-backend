@@ -15,7 +15,9 @@ class MapPin(CamelModel):
     offer_uuid: str
     title: str
     folio: str
+    # First area slug, kept for the offer detail link; area_slugs lists every area the offer is open to.
     area_slug: str | None
+    area_slugs: list[str]
     address: str
     lat: float
     lng: float

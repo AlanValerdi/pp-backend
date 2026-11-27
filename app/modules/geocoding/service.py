@@ -112,7 +112,7 @@ async def set_manual(session: AsyncSession, address_key: str, *, lat: float, lng
 async def list_pins(session: AsyncSession) -> list[MapPin]:
     geocoded = await repository.all_by_key(session)
     pins: list[MapPin] = []
-    for offer_uuid, folio, title, address, area_slug in await repository.active_offers(session):
+    for offer_uuid, folio, title, address, area_slugs in await repository.active_offers(session):
         row = geocoded.get(normalize_address(address))
         usable = row is not None and row.status in ("ok", "manual", "approximate")
         if row is None or not usable or row.lat is None or row.lng is None:
@@ -122,7 +122,8 @@ async def list_pins(session: AsyncSession) -> list[MapPin]:
                 offer_uuid=offer_uuid,
                 title=title,
                 folio=folio,
-                area_slug=area_slug,
+                area_slug=area_slugs[0] if area_slugs else None,
+                area_slugs=area_slugs,
                 address=address,
                 lat=row.lat,
                 lng=row.lng,
