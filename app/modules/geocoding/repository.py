@@ -94,8 +94,11 @@ async def all_by_key(session: AsyncSession) -> dict[str, GeocodedAddress]:
     return {row.address_key: row for row in rows}
 
 
-async def active_offers(session: AsyncSession) -> list[tuple[str, str, str, str, str | None]]:
-    """(uuid, folio, title, work address, area slug) for every active offer."""
+async def active_offers(session: AsyncSession) -> list[tuple[str, str, str, str, list[str]]]:
+    """(uuid, folio, title, work address, sorted area slugs) for every active offer.
+
+    An offer can be open to many areas, so all of them are returned.
+    """
     offers = (
         await session.exec(select(OfferRow).where(col(OfferRow.is_active).is_(True)).order_by(OfferRow.folio))
     ).all()
@@ -107,9 +110,10 @@ async def active_offers(session: AsyncSession) -> list[tuple[str, str, str, str,
         .where(col(OfferAreaRow.offer_uuid).in_([o.uuid for o in offers]), col(AreaRow.is_active).is_(True))
         .order_by(AreaRow.slug)
     )
-    slugs: dict[str, str] = {}
+    slugs: dict[str, list[str]] = {}
     for offer_uuid, slug in (await session.exec(area_statement)).all():
-        slugs.setdefault(offer_uuid, slug)
+        slugs.setdefault(offer_uuid, []).append(slug)
     return [
-        (o.uuid, o.folio, o.listing_programa, o.supervisor_work_address, slugs.get(o.uuid)) for o in offers
+        (o.uuid, o.folio, o.listing_programa, o.supervisor_work_address, slugs.get(o.uuid, []))
+        for o in offers
     ]

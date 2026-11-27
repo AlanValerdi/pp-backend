@@ -178,16 +178,16 @@ async def test_set_manual_is_stored_as_manual_by_admin(monkeypatch):
 
 
 def _offers():
-    # (uuid, folio, title, address, area_slug)
+    # (uuid, folio, title, address, area slugs sorted)
     return [
-        ("u1", "F1", "Offer 1", "Plaza Ok", "salud"),
-        ("u2", "F2", "Offer 2", "plaza  MANUAL", None),
-        ("u3", "F3", "Offer 3", "Plaza Pending", "salud"),
-        ("u4", "F4", "Offer 4", "Plaza Missing", "salud"),
-        ("u5", "F5", "Offer 5", "Virtual", "salud"),
-        ("u6", "F6", "Offer 6", "Plaza Unknown", "salud"),
-        ("u7", "F7", "Offer 7", "Plaza Broken", "salud"),
-        ("u8", "F8", "Offer 8", "Plaza Approx", "salud"),
+        ("u1", "F1", "Offer 1", "Plaza Ok", ["civil", "salud"]),
+        ("u2", "F2", "Offer 2", "plaza  MANUAL", []),
+        ("u3", "F3", "Offer 3", "Plaza Pending", ["salud"]),
+        ("u4", "F4", "Offer 4", "Plaza Missing", ["salud"]),
+        ("u5", "F5", "Offer 5", "Virtual", ["salud"]),
+        ("u6", "F6", "Offer 6", "Plaza Unknown", ["salud"]),
+        ("u7", "F7", "Offer 7", "Plaza Broken", ["salud"]),
+        ("u8", "F8", "Offer 8", "Plaza Approx", ["salud"]),
     ]
 
 
@@ -224,13 +224,15 @@ async def test_map_pins_endpoint_is_public_and_camel_case(geo_app, monkeypatch):
         "offerUuid": "u1",
         "title": "Offer 1",
         "folio": "F1",
-        "areaSlug": "salud",
+        "areaSlug": "civil",
+        "areaSlugs": ["civil", "salud"],
         "address": "Plaza Ok",
         "lat": 19.0,
         "lng": -98.0,
         "precision": "exact",
     }
     assert response.json()[1]["areaSlug"] is None
+    assert response.json()[1]["areaSlugs"] == []
 
 
 def test_user_read_exposes_role():
